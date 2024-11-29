@@ -118,68 +118,6 @@ static class GmailAPIExample
             }
         });
         Console.WriteLine($"matching mails: {matchingMailsCount}\tEstimated size: {Microsoft.VisualBasic.Strings.FormatNumber(totalEstimatedSize, 0)}");
-
-
-
-        //List<string> nextPageTokens = new List<string>();
-
-        //while (first || !string.IsNullOrEmpty(response.NextPageToken))
-        //{
-        //    if (first)
-        //    {
-        //        response = request.Execute();
-        //        first = false;
-        //    }
-        //    else
-        //    {
-        //        request.PageToken = nextPageToken;
-        //        response = request.Execute();
-        //    }
-        //    nextPageToken = response?.NextPageToken;
-        //    if (null != nextPageToken)
-        //        nextPageTokens.Add(nextPageToken);
-
-        //    if (response.Messages != null)
-        //    {
-        //        /*                foreach (var messageItem in response.Messages)
-        //                        {
-        //                            ++totalNumberOfMails;
-        //                            // Fetch each message details
-        //                            var messageRequest = service.Users.Messages.Get("me", messageItem.Id);
-        //                            var message = messageRequest.Execute();
-
-        //                            var from = GetHeader(message, "From");
-        //                            var subject = GetHeader(message, "Subject");
-        //                            Console.Write($"{++index}\r");
-        //                            if (message.SizeEstimate > 01 * 15000)
-        //                                Console.WriteLine($"{message.SizeEstimate} bytes\t{DateTimeOffset.FromUnixTimeMilliseconds(message.InternalDate ?? 0L)}\t{from.SmartSubString(0, 30)}\t{subject.SmartSubString(0, 30)}\t{message.Snippet.ToString().SmartSubString(0, 80)}");
-
-        //                            //Console.WriteLine($"Message ID: {message.Id}");
-        //                            //Console.WriteLine($"Size Estimate: {message.SizeEstimate} bytes");
-        //                            //Console.WriteLine($"Snippet: {message.Snippet}");
-        //                            //Console.WriteLine(new string('-', 40));
-        //                    }
-        //          */
-        //    }
-        //}
-
-        //var options = new ParallelOptions()
-        //{
-        //    //MaxDegreeOfParallelism = 5
-        //};
-        //Parallel.ForEach(nextPageTokens, options, (x) =>
-        //{
-        //    var tid = AppDomain.GetCurrentThreadId();
-        //    WriteLine($"{tid}\t{x}");
-        //    //System.Threading.Thread.Sleep(1000);
-        //}
-        //);
-
-        //foreach (var v in nextPageTokens)
-        //{
-        //    request.PageToken = v;
-        //    response = request.Execute();
-        //}
     }
 
     private static object _lock = new object();
@@ -230,20 +168,10 @@ static class GmailAPIExample
                     Console.Write($"{++index}\r");
                     if (message.SizeEstimate > 01 * 15000)
                         Console.WriteLine($"{message.SizeEstimate} bytes\t{DateTimeOffset.FromUnixTimeMilliseconds(message.InternalDate ?? 0L)}\t{from.SmartSubString(0, 30)}\t{subject.SmartSubString(0, 30)}\t{message.Snippet.ToString().SmartSubString(0, 80)}");
-
-                    //Console.WriteLine($"Message ID: {message.Id}");
-                    //Console.WriteLine($"Size Estimate: {message.SizeEstimate} bytes");
-                    //Console.WriteLine($"Snippet: {message.Snippet}");
-                    //Console.WriteLine(new string('-', 40));
                 }
             }
         }
         Console.WriteLine($"{totalNumberOfMails} mails read");
-
-        //else
-        //{
-        //    Console.WriteLine("No messages found.");
-        //}
     }
 
     static string GetHeader(Message message, string headerName)
