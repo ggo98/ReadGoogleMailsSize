@@ -4,6 +4,7 @@ using Google.Apis.Gmail.v1.Data;
 using Google.Apis.Services;
 using Google.Apis.Util.Store;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -19,9 +20,20 @@ namespace readgooglemailssize
         static string[] Scopes = { GmailService.Scope.GmailReadonly }; // "https://www.googleapis.com/auth/gmail.readonly"
         static string ApplicationName = "Gmail API Example";
 
+        private IDictionary<string, string> _labelMap;
+
+        private IList<MailMessageInformation> _messagesInfo;
+
         static void Main(string[] args)
         {
-            new GmailAPIExample().Run();
+            try
+            {
+                new GmailAPIExample().Run();
+            }
+            catch(Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+            }
         }
 
         void Run()
@@ -51,20 +63,27 @@ namespace readgooglemailssize
                 ApplicationName = ApplicationName,
             });
 
-            GetEmailLabels(service);
+            _labelMap = GetEmailLabels(service);
             //ListLargestEmails(service);
-            ListLargestEmailsParallel(service);
+            _messagesInfo = ListLargestEmailsParallel(service);
         }
 
-        void ListLargestEmailsParallel(GmailService service)
+        IList<MailMessageInformation> ListLargestEmailsParallel(GmailService service)
         {
+            var messageInfoBag = new ConcurrentBag<MailMessageInformation>();
+
             int maxSizeInBytes = 150000;
             maxSizeInBytes = 500000;
             maxSizeInBytes = 1000000;
+            maxSizeInBytes = 0;
+            maxSizeInBytes = 10000000;
+
+            int maxMatchingMailsCount = 100;
 
             // Fetch messages
             var request = service.Users.Messages.List("me");
             request.MaxResults = 100; // Adjust for more results.
+            request.MaxResults = 75;
             request.Q = ""; // Add Gmail query to filter if needed, e.g., has:attachment.
             request.Q = $"larger:{maxSizeInBytes}"; // Add Gmail query to filter if needed, e.g., has:attachment.
 
@@ -98,33 +117,63 @@ namespace readgooglemailssize
 
             var options = new ParallelOptions()
             {
-                //MaxDegreeOfParallelism = 5
+                MaxDegreeOfParallelism = 20
             };
 
+            object _incrementsLock = new object();
             int matchingMailsCount = 0;
             Parallel.ForEach(responseList, options, (r) =>
             {
                 var tid = AppDomain.GetCurrentThreadId();
                 foreach (var messageItem in r.Messages)
                 {
-                    ++totalNumberOfMails;
+                    lock (_incrementsLock)
+                        if (matchingMailsCount >= maxMatchingMailsCount)
+                            break;
+
+                    lock (_incrementsLock)
+                        ++totalNumberOfMails;
+                    //Interlocked.Increment(ref totalNumberOfMails);
 
                     var messageRequest = service.Users.Messages.Get("me", messageItem.Id);
                     var message = messageRequest.Execute();
 
                     var from = GetHeader(message, "From");
+                    var to = GetHeader(message, "To");
                     var subject = GetHeader(message, "Subject");
-                    //Console.Write($"{++index}\r");
-                    //WriteLine($"{tid}\t{message.SizeEstimate} bytes");
-                    if (message.SizeEstimate > 01 * maxSizeInBytes)
+                    var labels = GetLabels(message);
+
+                    if (message.SizeEstimate > maxSizeInBytes)
                     {
-                        Interlocked.Add(ref totalEstimatedSize, (Int64)message.SizeEstimate);
-                        Interlocked.Increment(ref matchingMailsCount);
-                        WriteLine($"{tid}\t{message.SizeEstimate} bytes\t{DateTimeOffset.FromUnixTimeMilliseconds(message.InternalDate ?? 0L)}\t{from.SmartSubString(0, 30)}\t{subject.SmartSubString(0, 30)}\t{message.Snippet.ToString().SmartSubString(0, 80)}");
+                        lock (_incrementsLock)
+                        {
+                            ++matchingMailsCount;
+                            totalEstimatedSize += (Int64)message.SizeEstimate;
+                            if (matchingMailsCount > maxMatchingMailsCount)
+                                break;
+
+                        //Interlocked.Add(ref totalEstimatedSize, (Int64)message.SizeEstimate);
+                        //Interlocked.Increment(ref matchingMailsCount);
+                        //if (matchingMailsCount >= maxMatchingMailsCount)
+                        //    break;
+
+                            WriteLine($"{matchingMailsCount}\t{tid}\t{message.SizeEstimate} bytes\t{DateTimeOffset.FromUnixTimeMilliseconds(message.InternalDate ?? 0L)}\t{from.SmartSubString(0, 30)}\t{to.SmartSubString(0, 30)}\t{subject.SmartSubString(0, 30)}\t{message.Snippet.ToString().SmartSubString(0, 80)}\t{string.Join(",", labels)}");
+                            messageInfoBag.Add(new MailMessageInformation()
+                            {
+                                Subject = subject,
+                                From = from,
+                                To = to,
+                                Date = DateTimeOffset.FromUnixTimeMilliseconds(message.InternalDate ?? 0L).DateTime,
+                                Size = message.SizeEstimate ?? 0,
+                                Snippet = message.Snippet,
+                                Labels = string.Join(",", labels),
+                            });
+                        }
                     }
                 }
             });
-            Console.WriteLine($"matching mails: {matchingMailsCount}\tEstimated size: {Microsoft.VisualBasic.Strings.FormatNumber(totalEstimatedSize, 0)}");
+            Console.WriteLine($"matching mails: {Math.Min(maxMatchingMailsCount, matchingMailsCount)}\tEstimated size: {Microsoft.VisualBasic.Strings.FormatNumber(totalEstimatedSize, 0)}");
+            return messageInfoBag.ToList();
         }
 
         void ListLargestEmails(GmailService service)
@@ -177,6 +226,19 @@ namespace readgooglemailssize
         string GetHeader(Message message, string headerName)
         {
             var ret = (message.Payload.Headers.Where(x => x.Name == headerName).Select(x => x.Value).FirstOrDefault()) ?? string.Empty;
+            return ret;
+        }
+
+        IList<string> GetLabels(Message message)
+        {
+            IList<string> ret = new List<string>();
+            foreach (var labelId in message.LabelIds)
+            {
+                string txt;
+                if (!_labelMap.TryGetValue(labelId, out txt))
+                    txt = labelId;
+                ret.Add(txt);
+            }
             return ret;
         }
 
